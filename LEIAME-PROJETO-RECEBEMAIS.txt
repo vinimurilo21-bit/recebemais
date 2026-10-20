@@ -1,0 +1,139 @@
+RECEBEMAIS / CONFERÊNCIA DE NOTA FISCAL — GUIA DO PROJETO
+Atualizado em 20/10/2026
+
+==================================================
+1. VISÃO GERAL
+==================================================
+Dois produtos que conversam pelo mesmo Firebase (projeto "recebemais-340ea"):
+
+A) SITE "Conferência de Nota Fiscal" / Extrator  (recebemais.online)
+   Arquivos: index.html + script.js + styles.css
+   - Lê NF-e em PDF (pdf.js, com OCR Tesseract de apoio) e extrai nº, fornecedor, produtos.
+   - Planilha (Romaneio): lê .xlsx (SheetJS) e monta lista de itens com quantidade necessária.
+   - Contagens: lista de contagens enviadas pelo app, mini-dashboard (cards), edição/remoção (admin).
+   - Dashboard v2: KPIs, gráficos de evolução, distribuição, alertas, modo TV, atualização a cada 30 s.
+   - Hospedagem: cPanel atrás do Cloudflare. Sem build: arquivos estáticos.
+
+B) APP RecebeMais (PWA / APK via Capacitor)
+   Arquivos: RecebeMais.html (arquivo único) + sw.js (Service Worker)
+   - Conferência cega / contagem de itens no recebimento.
+   - Histórico compartilhado entre aparelhos da empresa (sincroniza sozinho a cada 30 s).
+   - Card "últimas 3 confirmações" com horário (hh:mm:ss) e correção de leitura por item.
+
+Arquivos entregues neste pacote:
+   index.html, script.js, RecebeMais.html, sw.js, firestore.rules
+   (styles.css não foi alterado nesta fase; continue usando o seu atual.)
+
+==================================================
+2. BACKEND (FIREBASE — não há servidor próprio)
+==================================================
+Tudo é Firebase compat SDK no navegador: Authentication + Firestore.
+Não existe API própria; a segurança está TODA nas regras do Firestore (firestore.rules).
+
+Coleções:
+- usuarios          : papel (admin | gestor | funcionario), superAdmin (bool), empresaId
+- empresas          : dados da empresa (multi-empresa; tudo é separado por empresaId)
+- perfis            : perfis/configurações de usuário
+- pendentes         : contagens/conferências enviadas pelo app, aguardando a nuvem
+- historico_envios  : histórico dos envios (fonte da aba Contagens e do Dashboard);
+                      ligado a pendentes por "pendenteDocId"
+- historico_app_contagens : histórico compartilhado do APP entre aparelhos
+- eventos           : log de auditoria (ex.: CONTAGEM_ITENS_EDITADOS, CONTAGEM_REMOVIDA_NUVEM)
+- notas_com_erro    : NFs que não foram lidas corretamente
+
+Regras (firestore.rules) — pontos importantes:
+- Funções auxiliares: souAdminDaEmpresa, souSuperAdmin, souMesmaEmpresa.
+- historico_envios: não-admin só altera campos permitidos (diff().affectedKeys().hasOnly([...]));
+  apagar = apenas admin/superAdmin (documento legado sem empresaId: o criador).
+- pendentes: leitura/atualização/exclusão liberadas também para superAdmin.
+- Editar/remover contagem enviada = SOMENTE admin da empresa e super admin.
+
+ÍNDICE COMPOSTO OBRIGATÓRIO (ainda não confirmado por você):
+- Coleção historico_app_contagens: empresaId (crescente) + criadoEm (decrescente).
+  Sem ele o histórico compartilhado do app não carrega. Crie em
+  Firebase Console > Firestore > Índices > Composto (ou clique no link que o erro do console mostra).
+
+==================================================
+3. COMO PUBLICAR (CHECKLIST)
+==================================================
+SITE
+ 1. Subir index.html e script.js no cPanel (mesma pasta do styles.css).
+ 2. index.html referencia script.js?v=28 e styles.css?v=28. A cada mudança, aumente o número
+    (v=29, 30...) para forçar o navegador a baixar de novo.
+ 3. Cloudflare > Caching > Purge Everything (senão continua o script antigo).
+ 4. Ctrl+F5 para testar.
+
+REGRAS DO FIRESTORE
+ 5. Firebase Console > Firestore > Regras > colar firestore.rules > Publicar.
+
+APP (APK/PWA)
+ 6. Em sw.js aumentar CACHE_VERSION (atual "v9") a cada nova versão do RecebeMais.html.
+ 7. Gerar/instalar novamente o APK (ou reabrir o PWA para atualizar o cache).
+
+==================================================
+4. O QUE FOI FEITO (HISTÓRICO DESTA FASE)
+==================================================
+Site — Contagens
+ - Ver contagens enviadas; admin e super admin podem editar itens (referência, descrição,
+   quantidade, unidade) e remover da nuvem (apaga pendentes + historico_envios e registra evento).
+ - Cards (mini-dashboard) no topo da lista, clicáveis para filtrar; lista atualiza sozinha a cada 30 s.
+
+App
+ - Últimas 3 confirmações com horário; editar item lido = corrigir erro de leitura
+   (guarda o valor original, hora da edição); itens com ts/editadoTs/orig/lote.
+ - Histórico compartilhado força sincronização a cada 30 s e ao voltar para o app.
+
+Planilha (Romaneio)
+ - Quantidade recuperada do cache de vínculo externo (arquivos SPI antigos: xl/externalLinks).
+ - Coluna da quantidade detectada automaticamente: procura nas 5 colunas à direita do cabeçalho
+   "Qtd. Físico" a que tem mais números (arquivos wm, norplast, SPI: cabeçalho em M, quantidade em O).
+   Testado com os 3 arquivos: 33, 10 e 21 itens, todos com quantidade.
+ - Cabeçalho (NF, Data, Fornecedor...) quebra linha em vez de sobrepor; data em dd/mm/aaaa.
+
+NF em PDF
+ - Corrigidos: falso "RECEBEMOS" em "Recebida de Terceiros" (RTP), mescla MIL+PÇ (A. Raymond),
+   linhas de peso do item (ITW Delfast).
+ - Conversão MIL/MI -> x1000 está limitada por CNPJ (lista CNPJS_MILHEIRO_MIL no script.js);
+   hoje SÓ Osziplast. Se quiser ITW Delfast (MI), incluir o CNPJ 33034935000148 nessa lista.
+
+Dashboard v2
+ - Hero com KPIs, gráficos de evolução (barras/linhas), por hora, distribuição (donut/hbar),
+   alertas/anomalias/saúde, tabelas, filtros (hoje, 24h, 7/15/30 dias, personalizado, status,
+   fornecedor), modo TV em tela cheia (Esc sai), atualização a cada 30 s.
+
+==================================================
+5. MAPA DO CÓDIGO (script.js, ~6600 linhas)
+==================================================
+Procure pelo nome da função (Ctrl+F):
+ - NF/PDF: splitRowsIntoNotes, extractNFHeaderInfo, extractProducts, mesclarLinhaPecasDoMilheiro,
+   mesclarLinhaPesoDoItem, normalizarUnidadesParaKg, normalizarUnidadesMilheiro
+ - Planilha: planilhaProcessWorkbook, planilhaFindHeaderRow, planilhaCellNum, planilhaFindLabelValue,
+   planilhaLerCacheLinksExternos, planilhaQtdDoVinculoExterno, planilhaRenderMeta, planilhaRenderResults
+ - Contagens: carregarPainelHistorico, _renderizarPainelCards, _renderizarHistoricoLista,
+   abrirEditorItensEnviados, salvarItensEnviados, removerContagemDaNuvem, _souAdminOuSuperAdmin
+ - Dashboard: carregarDashboard, renderizarDashboard, _dashboardDocsFiltrados, _dash* (helpers/gráficos),
+   dashboardToggleTV, _dashboardAjustarTimer
+ - Config Firebase: firebaseConfig (por volta da linha 2234)
+ No RecebeMais.html (arquivo único): renderUltimasConfirmacoes, confOpen/confSave/confUndo,
+   _aplicarSnapshotHistNuvem, _forcarSyncHistoricoEmpresa.
+
+Bibliotecas (CDN): pdf.js 3.11.174, SheetJS xlsx 0.18.5, Tesseract, Firebase compat.
+
+==================================================
+6. PENDÊNCIAS / ATENÇÃO
+==================================================
+ [ ] Publicar firestore.rules e testar edição/remoção como admin e como super admin.
+ [ ] Criar o índice composto de historico_app_contagens.
+ [ ] Reinstalar o APK com sw.js v9 (ou superior).
+ [ ] Decidir ITW Delfast (MI x1000) — sim/não.
+ [ ] Menu lateral em celular: a barra de navegação estica a largura da página (largura ~639px);
+     problema antigo, ainda não corrigido.
+ [ ] Aviso de segurança: a apiKey do Firebase no front é normal, mas a proteção real são as regras.
+     Nunca coloque chaves secretas (admin SDK, OpenAI etc.) em script.js.
+
+==================================================
+7. COMO RETOMAR COM O CLAUDE
+==================================================
+Envie os arquivos atuais (index.html, script.js, styles.css, RecebeMais.html, sw.js, firestore.rules)
+junto com este guia e descreva o que mudar. Para bug de planilha/NF, envie também o arquivo
+(.xlsx/.pdf) e um print da tela.
