@@ -1,0 +1,723 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Conferência de Nota Fiscal</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.0/dist/tesseract.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<link rel="stylesheet" href="styles.css?v=28">
+</head>
+<body>
+
+<!-- ===================== TOAST FLUTUANTE ===================== -->
+<div id="toastContainer" class="toast-container"></div>
+
+<!-- ===================== LOGIN ===================== -->
+<div id="loginScreen">
+  <div class="login-card">
+    <h1>Conferência de Nota Fiscal</h1>
+    <p class="login-sub">Faça login para acessar</p>
+    <form id="loginForm" autocomplete="off">
+      <label for="loginEmail">E-mail</label>
+      <input type="email" id="loginEmail" name="loginEmail_no_autofill" autocomplete="off" data-lpignore="true" data-form-type="other" required>
+      <label for="loginPassword">Senha</label>
+      <input type="password" id="loginPassword" name="loginPassword_no_autofill" autocomplete="off" data-lpignore="true" data-form-type="other" required>
+      <button type="submit" class="btn-primary">Entrar</button>
+    </form>
+    <div id="loginError"></div>
+    <div id="loginSpinner">Entrando...</div>
+  </div>
+</div>
+
+<div class="app-shell" id="appContainer" style="display:none;">
+  <button id="btnSidebarToggle" type="button" title="Abrir/fechar menu" aria-label="Abrir/fechar menu"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg></button>
+  <aside class="app-sidebar">
+    <div class="app-sidebar-topbar">
+      <button class="perfil-avatar-btn" id="btnAbrirPerfil" type="button" onclick="abrirPerfilModal()" title="Meu perfil" aria-label="Abrir meu perfil">
+        <img id="perfilAvatarImg" src="" alt="" style="display:none;">
+        <span id="perfilAvatarIniciais">?</span>
+      </button>
+      <div class="app-sidebar-brand" id="perfilNomeLabel">Conferência NF-e</div>
+    </div>
+    <nav class="app-sidebar-nav">
+      <button class="app-sidebar-link active" id="navExtrator" type="button" onclick="switchView('extrator')">
+        <span class="ico"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg></span> Extrator Sefaz
+      </button>
+      <button class="app-sidebar-link" id="navDashboard" type="button" onclick="switchView('dashboard')">
+        <span class="ico"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg></span> Dashboard
+      </button>
+      <button class="app-sidebar-link" id="navPainel" type="button" onclick="switchView('painel')">
+        <span class="ico"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg></span> Contagens
+      </button>
+      <button class="app-sidebar-link" id="navPlanilha" type="button" onclick="switchView('planilha')">
+        <span class="ico"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/><line x1="8" y1="9" x2="10" y2="9"/></svg></span> Planilha (Romaneio)
+      </button>
+      <button class="app-sidebar-link" id="navConfig" type="button" onclick="switchView('config')">
+        <span class="ico"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82A1.65 1.65 0 0 0 3 13.09H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></span> Configurações
+      </button>
+      <button class="app-sidebar-link" id="navErros" type="button" onclick="switchView('erros')">
+        <span class="ico"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></span> Notas com Erro
+      </button>
+      <button class="app-sidebar-link" id="navAdmin" type="button" onclick="switchView('admin')">
+        <span class="ico"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41 13.42 20.58a2 2 0 0 1-2.83 0L2.58 12.58a2 2 0 0 1 0-2.83l7.17-7.17A2 2 0 0 1 11.17 2H18a2 2 0 0 1 2 2v6.83a2 2 0 0 1-.59 1.41z"/><circle cx="16" cy="7" r="1"/><path d="M16 16l3 3M16 16l-3-3"/></svg></span> Administração
+      </button>
+    </nav>
+    <div class="app-sidebar-footer">
+      <span id="userEmailLabel"></span>
+      <button class="btn-ghost" id="btnLogout" type="button">Sair</button>
+    </div>
+  </aside>
+
+  <div class="app-content">
+
+  <section class="app-view active container" id="view-extrator">
+  <header class="app-header">
+    <h1>Conferência de Nota Fiscal</h1>
+    <p>Importe uma ou várias NF-e em PDF (de uma mesma carga) e extraia e consolide automaticamente as referências e quantidades.</p>
+  </header>
+
+  <!-- ===================== ENTRADA DE NOTAS: PDF OU CHAVE DE ACESSO ===================== -->
+  <div class="intake-grid">
+    <section class="panel intake-card">
+      <div class="intake-card-head">
+        <span class="intake-card-icon"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-9.6 9.6"/><circle cx="7.5" cy="15.5" r="5.5"/></svg></span>
+        <div>
+          <h2>Buscar pela chave de acesso</h2>
+          <p>Cole a chave de 44 dígitos e o PDF é buscado direto na Sefaz e importado automaticamente.</p>
+        </div>
+      </div>
+      <input type="text" id="chaveAcessoInput" class="chave-input" maxlength="44" inputmode="numeric"
+             placeholder="00000000000000000000000000000000000000000000" autocomplete="off">
+      <button class="btn-primary btn-block" id="btnBuscarChave" type="button">Buscar e importar</button>
+      <div id="chaveAcessoStatus" class="chave-status"></div>
+    </section>
+
+    <section class="panel intake-card">
+      <div id="uploadArea">
+        <div class="upload-icon"><svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></div>
+        <h2>Arraste os PDFs aqui</h2>
+        <p>ou</p>
+        <span class="btn-primary btn-select">Selecionar arquivos</span>
+        <input type="file" id="fileInput" accept="application/pdf,.pdf" multiple>
+      </div>
+      <div class="file-info-bar" id="fileInfoBar">
+        <span class="name" id="fileInfoName"></span>
+        <button class="btn-ghost" id="btnChangeFile" type="button">Adicionar mais PDFs</button>
+      </div>
+    </section>
+  </div>
+
+  <!-- ===================== NF MANUAL (SEM ANEXAR PDF) ===================== -->
+  <section class="panel" id="manualAddPanel">
+    <button class="btn-secondary" id="btnToggleManualAdd" type="button"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Adicionar NF manualmente (sem anexar PDF)</button>
+    <div id="manualAddForm" style="display:none; margin-top:14px;">
+      <p style="color:var(--text-mute); font-size:0.85rem; margin-bottom:14px;">
+        Preencha os dados da nota e os produtos dela na mão, sem precisar anexar o PDF. Essa nota entra na carga junto com as demais, aparece na lista de notas processadas e vai junto no envio ao RecebeMais.
+      </p>
+
+      <div class="manual-add-grid" style="margin-bottom:20px;">
+        <div class="field">
+          <label for="manualNfNumero">Número da NF (opcional)</label>
+          <input type="text" id="manualNfNumero" placeholder="Ex.: 318213">
+        </div>
+        <div class="field">
+          <label for="manualNfFornecedor">Fornecedor / Razão social</label>
+          <input type="text" id="manualNfFornecedor" placeholder="Ex.: LINKPLAS LTDA">
+        </div>
+        <div class="field">
+          <label for="manualNfCnpj">CNPJ (opcional)</label>
+          <input type="text" id="manualNfCnpj" placeholder="00.000.000/0000-00">
+        </div>
+        <div class="field">
+          <label for="manualNfData">Data de emissão (opcional)</label>
+          <input type="text" id="manualNfData" placeholder="dd/mm/aaaa">
+        </div>
+      </div>
+
+      <div class="manual-nf-produtos">
+        <div class="manual-nf-produtos-header">
+          <span>Referência *</span><span>Descrição</span><span>Quantidade *</span><span>Unidade</span><span></span>
+        </div>
+        <div id="manualNfProdutosRows"></div>
+        <button class="btn-ghost" id="btnAddManualNfRow" type="button" style="margin-top:4px;"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Adicionar linha de produto</button>
+      </div>
+
+      <div class="actions-row">
+        <button class="btn-primary" id="btnConfirmManualAdd" type="button">Adicionar NF à carga</button>
+        <button class="btn-ghost" id="btnCancelManualAdd" type="button">Cancelar</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== PROCESSING ===================== -->
+  <section class="panel" id="processingPanel">
+    <div><span class="spinner"></span><span id="processingText">Lendo documento...</span></div>
+    <div class="processing-sub" id="processingSub"></div>
+  </section>
+
+  <!-- ===================== MESSAGES ===================== -->
+  <div class="msg msg-error" id="msgError"></div>
+  <div class="msg msg-warn" id="msgWarn"></div>
+  <div class="msg msg-success" id="msgSuccess"></div>
+
+  <!-- ===================== NOTAS PROCESSADAS ===================== -->
+  <section class="panel" id="notesPanel">
+    <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:12px;">
+      <h2 class="notes-title" style="margin-bottom:0;">Notas processadas</h2>
+      <button class="btn-ghost" id="btnGuardarErros" type="button"
+              title="Envia o PDF original das notas que deram erro pro Firebase, pra você revisar e corrigir depois"
+              style="display:none; font-size:0.76rem; padding:6px 10px;">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><path d="M17.5 19a4.5 4.5 0 0 0 0-9 6 6 0 0 0-11.6 1.5A4 4 0 0 0 6.5 19h11z"/></svg> Guardar notas com erro
+      </button>
+    </div>
+    <div class="notes-list" id="notesList"></div>
+  </section>
+
+  <!-- ===================== RESULTS ===================== -->
+  <section id="resultsSection">
+
+    <div class="summary-cards">
+      <div class="summary-card">
+        <div class="num" id="cardNotas">0</div>
+        <div class="label">Notas processadas</div>
+      </div>
+      <div class="summary-card">
+        <div class="num" id="cardLinhas">0</div>
+        <div class="label">Linhas encontradas</div>
+      </div>
+      <div class="summary-card">
+        <div class="num" id="cardRefs">0</div>
+        <div class="label">Referências únicas</div>
+      </div>
+      <div class="summary-card">
+        <div class="num" id="cardQtd">0</div>
+        <div class="label">Quantidade total</div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="table-controls">
+        <input type="text" id="searchInput" placeholder="Pesquisar referência ou produto...">
+        <div class="actions-row" style="margin-top:0;">
+          <button class="btn-secondary" id="btnExportExcel" type="button">Exportar Excel</button>
+          <button class="btn-success" id="btnEnviarRecebeMais" type="button"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><path d="M17.5 19a4.5 4.5 0 0 0 0-9 6 6 0 0 0-11.6 1.5A4 4 0 0 0 6.5 19h11z"/></svg> Enviar</button>
+          <button class="btn-danger" id="btnNovaNota" type="button">Nova Carga</button>
+        </div>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th data-sort="referencia">Referência <span class="arrow"></span></th>
+              <th data-sort="descricao">Descrição <span class="arrow"></span></th>
+              <th data-sort="quantidade" class="num">Quantidade <span class="arrow"></span></th>
+              <th>Unidade</th>
+            </tr>
+          </thead>
+          <tbody id="tableBody"></tbody>
+        </table>
+      </div>
+      <div class="empty-state" id="emptyState" style="display:none;">Nenhum produto encontrado.</div>
+    </div>
+  </section>
+
+  </section><!-- /view-extrator -->
+
+  <!-- ===================== PAINEL: HISTÓRICO DE ENVIOS AO RECEBEMAIS ===================== -->
+  <section class="app-view container" id="view-dashboard">
+    <header class="app-header" style="display:flex; align-items:flex-start; justify-content:space-between; gap:12px;">
+      <div>
+        <h1>Dashboard</h1>
+        <p>Panorama gerencial do recebimento — pedidos enviados ao RecebeMais, por status, fornecedor e divergência.</p>
+      </div>
+      <button class="btn-danger" type="button" id="btnExcluirHistoricoContagens" style="display:none; flex-shrink:0;" onclick="excluirHistoricoContagensEmpresa()">Excluir histórico de contagens</button>
+    </header>
+
+    <style>
+      /* ===== Dashboard v2 ===== */
+      #view-dashboard .dash-hero{ display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:14px; }
+      @media (max-width:900px){ #view-dashboard .dash-hero{ grid-template-columns:repeat(2,1fr); } }
+      @media (max-width:420px){ #view-dashboard .dash-kpi .k-n{ font-size:1.35rem; } }
+      #view-dashboard .dash-kpi{ background:var(--panel); border:1px solid var(--border); border-left:4px solid var(--primary); border-radius:var(--radius); padding:12px 14px; }
+      #view-dashboard .dash-kpi.clicavel{ cursor:pointer; }
+      #view-dashboard .dash-kpi.clicavel:hover{ background:#f7fafc; }
+      #view-dashboard .dash-kpi.k-ok{ border-left-color:#1f9d55; }
+      #view-dashboard .dash-kpi.k-warn{ border-left-color:#e08a00; }
+      #view-dashboard .dash-kpi.k-ruim{ border-left-color:var(--danger); }
+      #view-dashboard .dash-kpi .k-l{ font-size:.7rem; text-transform:uppercase; letter-spacing:.3px; color:var(--text-mute); }
+      #view-dashboard .dash-kpi .k-n{ font-size:1.7rem; font-weight:700; color:var(--primary-dark); line-height:1.15; margin-top:2px; }
+      #view-dashboard .dash-kpi.k-ok .k-n{ color:#1f7a4d; }
+      #view-dashboard .dash-kpi.k-ruim .k-n{ color:var(--danger); }
+      #view-dashboard .dash-kpi .k-s{ font-size:.72rem; color:var(--text-mute); margin-top:2px; }
+      #view-dashboard .dash-delta{ font-size:.7rem; color:var(--text-mute); margin-top:4px; }
+      #view-dashboard .dash-delta.d-bom{ color:#1f7a4d; font-weight:600; }
+      #view-dashboard .dash-delta.d-ruim{ color:var(--danger); font-weight:600; }
+      #view-dashboard .dash-grid2{ display:grid; grid-template-columns:repeat(auto-fit,minmax(340px,1fr)); gap:14px; margin-bottom:14px; }
+      #view-dashboard .dash-grid3{ display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:14px; margin-bottom:14px; }
+      #view-dashboard .dash-grid2 > .panel, #view-dashboard .dash-grid3 > .panel{ margin-bottom:0; }
+      #view-dashboard .dash-svg{ width:100%; height:auto; display:block; }
+      #view-dashboard .dash-grid{ stroke:var(--border); stroke-width:1; }
+      #view-dashboard .dash-ax{ font-size:10px; fill:var(--text-mute); }
+      #view-dashboard .dash-legenda{ display:flex; flex-wrap:wrap; gap:4px 14px; font-size:.74rem; color:var(--text-mute); margin:-4px 0 6px; }
+      #view-dashboard .dash-legenda i, #view-dashboard .dash-donut-leg i{ display:inline-block; width:10px; height:10px; border-radius:3px; margin-right:5px; vertical-align:-1px; }
+      #view-dashboard .dash-hint{ font-size:.74rem; font-weight:500; color:var(--text-mute); }
+      #view-dashboard .dash-donut-wrap{ display:flex; align-items:center; gap:16px; flex-wrap:wrap; }
+      #view-dashboard .dash-donut{ width:150px; height:150px; flex-shrink:0; }
+      #view-dashboard .dash-donut-n{ font-size:24px; font-weight:700; fill:var(--primary-dark); }
+      #view-dashboard .dash-donut-leg{ font-size:.82rem; display:grid; gap:6px; }
+      #view-dashboard .dash-hbar{ display:grid; grid-template-columns:minmax(80px,1.2fr) 2fr auto; gap:8px; align-items:center; font-size:.8rem; margin-bottom:8px; padding:2px 4px; border-radius:6px; }
+      #view-dashboard .dash-hbar.clicavel{ cursor:pointer; }
+      #view-dashboard .dash-hbar.clicavel:hover{ background:#f3f7fb; }
+      #view-dashboard .hb-l{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+      #view-dashboard .hb-t{ position:relative; background:var(--bg); border-radius:20px; height:10px; overflow:hidden; }
+      #view-dashboard .hb-f{ position:absolute; inset:0 auto 0 0; background:#2c7fb8; border-radius:20px; }
+      #view-dashboard .hb-f2{ background:#6c4ab6; }
+      #view-dashboard .hb-d{ position:absolute; inset:0 auto 0 0; background:var(--danger); border-radius:20px; }
+      #view-dashboard .hb-v{ color:var(--text-mute); font-size:.74rem; white-space:nowrap; }
+      #view-dashboard .t-ruim{ color:var(--danger); font-weight:600; }
+      #view-dashboard .dash-toolbar{ display:flex; flex-wrap:wrap; align-items:center; gap:10px 16px; font-size:.8rem; color:var(--text-mute); margin-bottom:12px; }
+      #view-dashboard .dash-toolbar .dash-clock{ margin-left:auto; font-variant-numeric:tabular-nums; }
+      #view-dashboard .dash-auto{ display:flex; align-items:center; gap:6px; cursor:pointer; }
+      /* ===== Modo TV ===== */
+      body.dash-tv-on .app-sidebar{ display:none !important; }
+      body.dash-tv-on .app-shell{ display:block !important; }
+      body.dash-tv-on{ background:#0f1b27; }
+      #view-dashboard.dash-tv{ max-width:none; padding:16px 28px; background:#0f1b27; min-height:100vh; --panel:#172636; --bg:#0f1b27; --border:#27394d; --text:#e8eef5; --text-mute:#9fb1c4; --primary:#5aaee3; --primary-dark:#8cc8f0; }
+      #view-dashboard.dash-tv .app-header, #view-dashboard.dash-tv .dash-filtros-panel{ display:none !important; }
+      body.dash-tv-on #btnSidebarToggle{ display:none !important; }
+      #view-dashboard.dash-tv .aa-resolver{ display:none; }
+      #view-dashboard.dash-tv .dash-alert-group .dash-alert-item:nth-child(n+5){ display:none; }
+      #view-dashboard .dash-filtro-resumo{ font-weight:600; color:var(--text); }
+      #view-dashboard.dash-tv{ color:var(--text); }
+      #view-dashboard.dash-tv .dash-donut-leg, #view-dashboard.dash-tv .dash-hbar, #view-dashboard.dash-tv .hb-l{ color:var(--text); }
+      #view-dashboard.dash-tv .btn-secondary{ background:#172636; color:#e8eef5; border-color:#27394d; }
+      #view-dashboard.dash-tv .dash-hero{ grid-template-columns:repeat(6,1fr); }
+      #view-dashboard.dash-tv .dash-kpi .k-n{ font-size:2.6rem; }
+      #view-dashboard.dash-tv .dash-kpi .k-l{ font-size:.85rem; }
+      #view-dashboard.dash-tv .dash-kpi .k-s, #view-dashboard.dash-tv .dash-delta{ font-size:.8rem; }
+      #view-dashboard.dash-tv .dash-kpi.clicavel:hover, #view-dashboard.dash-tv .dash-hbar.clicavel:hover{ background:transparent; }
+      #view-dashboard.dash-tv .dash-section-title{ font-size:1.15rem; color:#cfe3f5; }
+      #view-dashboard.dash-tv .dash-ax{ font-size:11px; }
+      #view-dashboard.dash-tv .dash-toolbar{ font-size:1rem; color:#9fb1c4; }
+      #view-dashboard.dash-tv .dash-toolbar .dash-clock{ font-size:1.4rem; color:#e8eef5; font-weight:700; }
+      #view-dashboard.dash-tv .dash-alert-item{ background:#1d3045; color:#e8eef5; }
+      @media (max-width:900px){ #view-dashboard.dash-tv .dash-hero{ grid-template-columns:repeat(2,1fr); } }
+    </style>
+    <section class="panel dash-filtros-panel" style="margin-bottom:16px;">
+      <div style="display:flex; flex-wrap:wrap; gap:12px; align-items:flex-end;">
+        <div>
+          <label class="dash-filtro-label">Período</label><br>
+          <select id="dashboardFiltroPeriodo" class="dash-filtro-select" onchange="_dashboardFiltroMudou()">
+            <option value="tudo">Tudo</option>
+            <option value="hoje">Hoje</option>
+            <option value="1d">Últimas 24h</option>
+            <option value="7d">Últimos 7 dias</option>
+            <option value="15d">Últimos 15 dias</option>
+            <option value="30d">Últimos 30 dias</option>
+            <option value="personalizado">Personalizado...</option>
+          </select>
+        </div>
+        <div id="dashboardFiltroPersonalizadoWrap" style="display:none; gap:12px; align-items:flex-end;">
+          <div>
+            <label class="dash-filtro-label">De</label><br>
+            <input type="date" id="dashboardFiltroDataInicio" onchange="_dashboardFiltroMudou()"
+                   style="padding:8px 10px; border:1px solid var(--border); border-radius:8px; font-size:0.88rem;">
+          </div>
+          <div>
+            <label class="dash-filtro-label">Até</label><br>
+            <input type="date" id="dashboardFiltroDataFim" onchange="_dashboardFiltroMudou()"
+                   style="padding:8px 10px; border:1px solid var(--border); border-radius:8px; font-size:0.88rem;">
+          </div>
+        </div>
+        <!-- Só aparece pra super admin — troca o escopo do Dashboard
+             inteiro entre uma empresa específica e "Todas" juntas. -->
+        <div id="dashboardFiltroEmpresaWrap" style="display:none;">
+          <label class="dash-filtro-label">Empresa</label><br>
+          <select id="dashboardFiltroEmpresa" class="dash-filtro-select" onchange="_dashboardFiltroMudou()">
+            <option value="todas">Todas</option>
+          </select>
+        </div>
+        <div>
+          <label class="dash-filtro-label">Fornecedor</label><br>
+          <select id="dashboardFiltroForn" class="dash-filtro-select" onchange="_dashboardFiltroMudou()">
+            <option value="">Todos</option>
+          </select>
+        </div>
+        <div>
+          <label class="dash-filtro-label">Status</label><br>
+          <select id="dashboardFiltroStatus" class="dash-filtro-select" onchange="_dashboardFiltroMudou()">
+            <option value="">Todos</option>
+            <option value="pendente">Em conferência</option>
+            <option value="finalizada">Finalizada</option>
+            <option value="divergente">Divergente</option>
+          </select>
+        </div>
+        <button class="btn-secondary" type="button" onclick="carregarDashboard()" style="margin-left:auto;">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg> Atualizar
+        </button>
+        <button class="btn-secondary" type="button" onclick="exportarDashboardCSV()">Exportar CSV</button>
+      </div>
+    </section>
+
+    <div id="dashboardStatus"></div>
+    <div id="dashboardContent" style="display:none;"></div>
+
+    <!-- Assistente RecebeMais (Etapas 7+8) removido do Dashboard a
+         pedido — o código JS (perguntarAssistenteIA, etc.) continua no
+         arquivo, só o card daqui foi tirado, caso queira reativar
+         depois é só devolver este bloco. -->
+  </section><!-- /view-dashboard -->
+
+  <section class="app-view container" id="view-painel">
+    <header class="app-header">
+      <h1>Contagens</h1>
+      <p>Acompanhe as contagens às cegas liberadas pelo operacional. Em "Detalhes", os múltiplos por referência orientam a liberação administrativa e a impressão das etiquetas por volume.</p>
+    </header>
+
+    <section class="panel" id="painelPanel">
+      <style>
+        #painelCards .pc-grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:10px; margin-bottom:6px; }
+        #painelCards .pc-card{ text-align:left; background:#fff; border:1px solid var(--border); border-left:4px solid var(--pc); border-radius:10px; padding:10px 12px; cursor:pointer; font-family:inherit; display:flex; flex-direction:column; gap:2px; }
+        #painelCards .pc-card:disabled{ cursor:default; }
+        #painelCards .pc-card:not(:disabled):hover{ background:#f7fafc; }
+        #painelCards .pc-n{ font-size:1.4rem; font-weight:700; color:var(--pc); line-height:1.1; }
+        #painelCards .pc-l{ font-size:0.72rem; color:var(--text-mute); }
+        #painelCards .pc-sub{ font-size:0.72rem; color:var(--text-mute); margin:4px 0 12px; }
+      </style>
+      <div id="painelCards"></div>
+      <div class="hist-filtros">
+        <input type="text" id="histBusca" placeholder="Buscar por fornecedor ou NF..." oninput="_histFiltroMudou()">
+        <select id="histFiltroStatus" onchange="_histFiltroMudou()">
+          <option value="">Todos os status</option>
+          <option value="pendente">Em conferência</option>
+          <option value="finalizada">Finalizada</option>
+          <option value="divergente">Finalizada com divergência</option>
+          <option value="descartada">Descartada</option>
+        </select>
+        <button class="btn-secondary" id="btnPainelAtualizar" type="button"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg> Atualizar</button>
+        <button class="btn-secondary" type="button" onclick="exportarContagensCSV()">Exportar CSV</button>
+      </div>
+      <span id="painelResumo" style="color:var(--text-mute); font-size:0.85rem; display:block; margin:2px 0 12px;"></span>
+      <div id="painelStatus"></div>
+      <div id="painelLista"></div>
+      <div class="empty-state" id="painelEmptyState" style="display:none;">Nenhum envio registrado ainda.</div>
+    </section>
+  </section><!-- /view-painel -->
+
+  <!-- ===================== PLANILHA (ROMANEIO) — leitor da planilha de
+       recebimento específica da empresa, envia pra mesma fila de
+       contagem em nuvem que o Extrator Sefaz usa. Só super admin. ===================== -->
+  <section class="app-view container" id="view-planilha">
+    <header class="app-header">
+      <h1>Planilha (Romaneio)</h1>
+      <p>Leia a planilha de recebimento (.xlsx) — extrai fornecedor, referências e quantidade necessária, e envia pra mesma fila de contagem em nuvem do RecebeMais.</p>
+    </header>
+
+    <section class="panel intake-card">
+      <div id="planilhaUploadArea">
+        <div class="upload-icon"><svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></div>
+        <h2>Solte a planilha aqui</h2>
+        <p>ou</p>
+        <span class="btn-primary btn-select">Selecionar arquivo</span>
+        <input type="file" id="planilhaFileInput" accept=".xlsx,.xlsm,.xls">
+      </div>
+      <div class="file-info-bar" id="planilhaFileInfoBar" style="display:none;">
+        <span class="name" id="planilhaFileInfoName"></span>
+        <button class="btn-ghost" type="button" onclick="planilhaResetar()">Ler outra planilha</button>
+      </div>
+    </section>
+
+    <div id="planilhaStatus"></div>
+
+    <section class="panel" id="planilhaResultadoPanel" style="display:none;">
+      <div id="planilhaMeta" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:14px; margin-bottom:18px;"></div>
+
+      <div style="display:flex; align-items:baseline; gap:10px; margin-bottom:12px;">
+        <span style="font-size:1.4rem; font-weight:700; color:var(--text);" id="planilhaStatTotal">0</span>
+        <span style="color:var(--text-mute); font-size:0.85rem;">itens encontrados</span>
+      </div>
+
+      <div class="dash-table-wrap">
+        <table>
+          <thead><tr><th>Código</th><th>Descrição</th><th>Unidade</th><th>Qtd. necessária</th><th></th></tr></thead>
+          <tbody id="planilhaTableBody"></tbody>
+        </table>
+      </div>
+
+      <div class="actions-row" style="margin-top:18px;">
+        <button class="btn-primary" type="button" id="planilhaBtnCloud" onclick="planilhaEnviarParaNuvem()" disabled>Enviar para nuvem (RecebeMais)</button>
+        <button class="btn-secondary" type="button" id="planilhaBtnExport" onclick="planilhaExportarModelo()" disabled>Exportar Excel (modelo LINKPLAS)</button>
+        <button class="btn-ghost" type="button" onclick="planilhaResetar()">Ler outra planilha</button>
+      </div>
+    </section>
+  </section><!-- /view-planilha -->
+
+  <!-- ===================== MODAL: DETALHES DA CONTAGEM (finalizada no RecebeMais) ===================== -->
+  <div id="detalhesModalOverlay" onclick="if(event.target===this) fecharDetalhesContagem()">
+    <div class="detalhes-card">
+      <button class="detalhes-close" type="button" onclick="fecharDetalhesContagem()" aria-label="Fechar">&times;</button>
+      <h2 id="detalhesTitulo">Contagem</h2>
+      <div class="detalhes-sub" id="detalhesSub"></div>
+      <div id="detalhesConteudo"></div>
+    </div>
+  </div>
+
+  <!-- ===================== MODAL: SENHA PARA EXCLUIR TODOS OS DADOS ===================== -->
+  <div id="senhaExclusaoOverlay" onclick="if(event.target===this) _fecharModalSenhaExclusao()">
+    <div class="detalhes-card" style="max-width:380px;">
+      <button class="detalhes-close" type="button" onclick="_fecharModalSenhaExclusao()" aria-label="Fechar">&times;</button>
+      <h2>Confirmar exclusão</h2>
+      <div class="detalhes-sub">Digite sua senha de acesso ao site para confirmar a exclusão permanente de todos os dados.</div>
+      <form id="senhaExclusaoForm" onsubmit="event.preventDefault(); _confirmarSenhaExclusao();">
+        <label for="senhaExclusaoInput" style="display:block; font-size:0.82rem; color:var(--text-mute); margin-bottom:6px;">Senha</label>
+        <input type="password" id="senhaExclusaoInput" autocomplete="current-password" required
+               style="width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:8px; font-size:0.95rem; margin-bottom:10px; box-sizing:border-box;">
+        <div class="msg msg-error" id="senhaExclusaoErro" style="display:none; margin-bottom:10px;"></div>
+        <div style="display:flex; gap:8px;">
+          <button type="button" class="btn-ghost" style="flex:1;" onclick="_fecharModalSenhaExclusao()">Cancelar</button>
+          <button type="submit" class="btn-danger" style="flex:1;" id="btnConfirmarSenhaExclusao">Excluir tudo</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ===================== MODAL: PERFIL ===================== -->
+  <div id="perfilModalOverlay" onclick="if(event.target===this) fecharPerfilModal()">
+    <div class="detalhes-card" style="max-width:420px;">
+      <button class="detalhes-close" type="button" onclick="fecharPerfilModal()" aria-label="Fechar">&times;</button>
+      <h2>Meu perfil</h2>
+      <div class="detalhes-sub">Nome de exibição, foto e senha de acesso.</div>
+
+      <div style="display:flex; align-items:center; gap:14px; margin:16px 0;">
+        <div class="perfil-avatar-preview">
+          <img id="perfilAvatarPreviewImg" src="" alt="" style="display:none;">
+          <span id="perfilAvatarPreviewIniciais">?</span>
+        </div>
+        <div>
+          <input type="file" id="perfilFotoInput" accept="image/*" style="display:none;" onchange="_perfilFotoSelecionada(event)">
+          <button type="button" class="btn-secondary" onclick="document.getElementById('perfilFotoInput').click()">Escolher foto</button>
+        </div>
+      </div>
+
+      <label for="perfilNomeInput" style="display:block; font-size:0.82rem; color:var(--text-mute); margin-bottom:6px;">Nome (empresa / setor)</label>
+      <input type="text" id="perfilNomeInput" placeholder="Ex: Depósito Central"
+             style="width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:8px; font-size:0.95rem; margin-bottom:12px; box-sizing:border-box;">
+
+      <label for="perfilEmailDisplay" style="display:block; font-size:0.82rem; color:var(--text-mute); margin-bottom:6px;">E-mail</label>
+      <input type="text" id="perfilEmailDisplay" disabled
+             style="width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:8px; font-size:0.95rem; margin-bottom:12px; box-sizing:border-box; background:var(--bg); color:var(--text-mute);">
+
+      <div id="perfilStatus" style="font-size:0.8rem; margin-bottom:10px; min-height:1.1em;"></div>
+      <button type="button" class="btn-primary btn-block" id="btnSalvarPerfil" onclick="salvarPerfil()">Salvar perfil</button>
+
+      <hr style="border:none; border-top:1px solid var(--border); margin:22px 0;">
+
+      <h2 style="font-size:0.95rem; margin-bottom:4px;">Alterar senha</h2>
+      <div class="detalhes-sub" style="margin-bottom:12px;">Informe a senha atual e a nova senha.</div>
+      <form id="perfilSenhaForm" onsubmit="event.preventDefault(); alterarSenhaPerfil();">
+        <label for="perfilSenhaAtualInput" style="display:block; font-size:0.82rem; color:var(--text-mute); margin-bottom:6px;">Senha atual</label>
+        <input type="password" id="perfilSenhaAtualInput" autocomplete="current-password" required
+               style="width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:8px; font-size:0.95rem; margin-bottom:10px; box-sizing:border-box;">
+        <label for="perfilSenhaNovaInput" style="display:block; font-size:0.82rem; color:var(--text-mute); margin-bottom:6px;">Nova senha</label>
+        <input type="password" id="perfilSenhaNovaInput" autocomplete="new-password" required minlength="6"
+               style="width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:8px; font-size:0.95rem; margin-bottom:10px; box-sizing:border-box;">
+        <label for="perfilSenhaConfirmaInput" style="display:block; font-size:0.82rem; color:var(--text-mute); margin-bottom:6px;">Confirmar nova senha</label>
+        <input type="password" id="perfilSenhaConfirmaInput" autocomplete="new-password" required minlength="6"
+               style="width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:8px; font-size:0.95rem; margin-bottom:10px; box-sizing:border-box;">
+        <div class="msg msg-error" id="perfilSenhaErro" style="display:none; margin-bottom:10px;"></div>
+        <div class="msg msg-success" id="perfilSenhaSucesso" style="display:none; margin-bottom:10px;"></div>
+        <button type="submit" class="btn-secondary btn-block" id="btnAlterarSenhaPerfil">Atualizar senha</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- ===================== CONFIGURAÇÕES ===================== -->
+  <section class="app-view container" id="view-config">
+    <header class="app-header">
+      <h1>Configurações</h1>
+      <p>Preferências de uso do extrator neste navegador.</p>
+    </header>
+
+    <section class="panel">
+      <h2 style="font-size:1rem; margin-bottom:4px;">Tempo login aberto</h2>
+      <p style="color:var(--text-mute); font-size:0.85rem; margin-bottom:16px;">
+        Tempo de inatividade até o acesso ser encerrado automaticamente, exigindo login novamente.
+      </p>
+      <div id="configSessaoOpcoes" class="config-radio-group"></div>
+      <div id="configSessaoStatus" style="margin-top:14px; font-size:0.82rem; color:var(--text-mute);"></div>
+    </section>
+
+    <!-- Só aparece pra gestor e super admin (mesma ação que já existe
+         no Dashboard — aqui é só mais um lugar de acesso). -->
+    <section class="panel" id="configExcluirHistoricoPanel" style="display:none;">
+      <h2 style="font-size:1rem; margin-bottom:4px;">Excluir histórico de contagens</h2>
+      <p style="color:var(--text-mute); font-size:0.85rem; margin-bottom:16px;">
+        Apaga permanentemente todo o histórico de contagens da empresa — a tela de Contagens e os números do Dashboard voltam a zero. Não afeta logins nem o custo de consultas já registrado.
+      </p>
+      <button class="btn-danger btn-block" type="button" onclick="excluirHistoricoContagensEmpresa()">Excluir histórico de contagens</button>
+    </section>
+
+    <!-- A seção abaixo (Dados) continua só pra super admin. Provedor de
+         consulta e chaves de API foram removidos daqui — a busca por
+         chave usa sempre a MeuDanfe, com a chave configurada como
+         variável de ambiente no backend (não fica mais editável pelo
+         navegador). -->
+    <section class="panel" id="configDadosPanel" style="display:none;">
+      <h2 style="font-size:1rem; margin-bottom:4px;">Dados</h2>
+      <p style="color:var(--text-mute); font-size:0.85rem; margin-bottom:16px;">
+        Exclui permanentemente os dados desta conta na nuvem: pendentes, histórico de envios e notas com erro. Ação irreversível, restrita à sua própria conta.
+      </p>
+      <button class="btn-danger btn-block" id="btnExcluirTodosDados" type="button" onclick="excluirTodosOsDados()">Excluir todos os dados</button>
+      <div id="configDadosStatus" style="margin-top:14px; font-size:0.82rem; color:var(--text-mute);"></div>
+    </section>
+  </section><!-- /view-config -->
+
+  <section class="app-view container" id="view-admin">
+    <header class="app-header">
+      <h1>Administração</h1>
+      <p>Empresas cadastradas, logins e papéis de acesso, e custo de consultas por chave de acesso (R$ 0,03 cada).</p>
+    </header>
+
+    <div id="adminStatus"></div>
+
+    <!-- Estado 1: ainda sem cadastro — oferece criar a própria empresa e virar admin dela -->
+    <section class="panel" id="adminBootstrap" style="display:none;">
+      <h2 style="font-size:1rem; margin-bottom:4px;">Cadastre sua empresa</h2>
+      <p style="color:var(--text-mute); font-size:0.85rem; margin-bottom:16px;">
+        Você ainda não está vinculado a nenhuma empresa neste sistema. Cadastre a sua abaixo — você vira automaticamente o administrador dela, podendo depois criar logins de gestor e funcionário.
+      </p>
+      <label for="adminBootstrapNome" style="display:block; font-size:0.82rem; color:var(--text-mute); margin-bottom:6px;">Nome da empresa</label>
+      <input type="text" id="adminBootstrapNome" placeholder="Ex: Simoldes Plásticos"
+             style="width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:8px; font-size:0.95rem; margin-bottom:14px; box-sizing:border-box;">
+      <button class="btn-primary" type="button" onclick="bootstrapEmpresaAdmin()">Cadastrar e virar administrador</button>
+    </section>
+
+    <!-- Estado 2: usuário comum (gestor/funcionário) — só um resumo, sem controles -->
+    <section class="panel" id="adminSomenteLeitura" style="display:none;">
+      <h2 style="font-size:1rem; margin-bottom:4px;">Sua conta</h2>
+      <div id="adminSomenteLeituraInfo" style="font-size:0.9rem; color:var(--text);"></div>
+    </section>
+
+    <!-- Estado 3: administrador — painel completo -->
+    <div id="adminPainelCompleto" style="display:none;">
+      <section class="panel" style="margin-bottom:16px;">
+        <h2 style="font-size:1rem; margin-bottom:4px;">Sua empresa</h2>
+        <div id="adminEmpresaInfo" style="font-size:0.9rem; color:var(--text);"></div>
+      </section>
+
+      <!-- Só aparece pra super administrador — gerenciar TODAS as
+           empresas cadastradas no sistema (não só a própria). -->
+      <section class="panel" style="margin-bottom:16px; display:none;" id="adminEmpresasCadastradasPanel">
+        <h2 style="font-size:1rem; margin-bottom:4px;">Empresas cadastradas</h2>
+        <p style="color:var(--text-mute); font-size:0.85rem; margin-bottom:14px;">
+          Só você (super administrador) pode cadastrar novas empresas e escolher pra qual delas um login novo vai — os demais administradores só criam login dentro da própria empresa.
+        </p>
+        <div style="display:flex; gap:8px; margin-bottom:14px;">
+          <input type="text" id="adminNovaEmpresaNome" placeholder="Nome da nova empresa"
+                 style="flex:1; padding:9px 11px; border:1px solid var(--border); border-radius:8px; font-size:0.9rem;">
+          <button class="btn-secondary" type="button" onclick="cadastrarNovaEmpresaSuperAdmin()">Cadastrar empresa</button>
+        </div>
+        <div id="adminListaEmpresas"><div class="empty-state">Carregando...</div></div>
+      </section>
+
+      <section class="panel" style="margin-bottom:16px;">
+        <h2 style="font-size:1rem; margin-bottom:4px;">Custo de consultas por chave de acesso</h2>
+        <p style="color:var(--text-mute); font-size:0.85rem; margin-bottom:14px;">
+          Cada busca de NF-e por chave custa R$ 0,03. Total acumulado desta empresa:
+        </p>
+        <div class="dash-cards">
+          <div class="dash-card"><div class="n" id="adminCustoConsultas">—</div><div class="l">Consultas realizadas</div></div>
+          <div class="dash-card"><div class="n" id="adminCustoTotal">—</div><div class="l">Custo total estimado</div></div>
+        </div>
+      </section>
+
+      <section class="panel" style="margin-bottom:16px;" id="adminCriarLoginPanel">
+        <h2 style="font-size:1rem; margin-bottom:12px;">Adicionar novo login</h2>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;">
+          <div>
+            <label for="adminNovoNome" style="display:block; font-size:0.82rem; color:var(--text-mute); margin-bottom:6px;">Nome</label>
+            <input type="text" id="adminNovoNome" placeholder="Nome completo" style="width:100%; padding:9px 11px; border:1px solid var(--border); border-radius:8px; font-size:0.9rem; box-sizing:border-box;">
+          </div>
+          <div>
+            <label for="adminNovoEmail" style="display:block; font-size:0.82rem; color:var(--text-mute); margin-bottom:6px;">E-mail</label>
+            <input type="email" id="adminNovoEmail" placeholder="email@empresa.com" style="width:100%; padding:9px 11px; border:1px solid var(--border); border-radius:8px; font-size:0.9rem; box-sizing:border-box;">
+          </div>
+          <div>
+            <label for="adminNovoSenha" style="display:block; font-size:0.82rem; color:var(--text-mute); margin-bottom:6px;">Senha provisória</label>
+            <input type="password" id="adminNovoSenha" placeholder="Mínimo 6 caracteres" style="width:100%; padding:9px 11px; border:1px solid var(--border); border-radius:8px; font-size:0.9rem; box-sizing:border-box;">
+          </div>
+          <div>
+            <label for="adminNovoPapel" style="display:block; font-size:0.82rem; color:var(--text-mute); margin-bottom:6px;">Papel</label>
+            <select id="adminNovoPapel" style="width:100%; padding:9px 11px; border:1px solid var(--border); border-radius:8px; font-size:0.9rem; background:#fff;">
+              <option value="funcionario">Funcionário (Extrator + Contagens)</option>
+              <option value="gestor">Gestor (Dashboard)</option>
+              <option value="admin">Administrador (acesso total)</option>
+            </select>
+          </div>
+          <!-- Só aparece pra super administrador — os demais nunca veem
+               esse campo, então nunca conseguem escolher outra empresa
+               (a tentativa também seria bloqueada no servidor mesmo
+               que alguém forçasse a requisição). -->
+          <div id="adminNovoEmpresaWrap" style="display:none; grid-column: 1 / -1;">
+            <label for="adminNovoEmpresa" style="display:block; font-size:0.82rem; color:var(--text-mute); margin-bottom:6px;">Empresa (só super administrador)</label>
+            <select id="adminNovoEmpresa" style="width:100%; padding:9px 11px; border:1px solid var(--border); border-radius:8px; font-size:0.9rem; background:#fff;"></select>
+          </div>
+        </div>
+        <button class="btn-primary" type="button" onclick="criarNovoLoginAdmin()" id="btnAdminCriarLogin">Criar login</button>
+        <div id="adminCriarLoginStatus" style="margin-top:12px; font-size:0.82rem;"></div>
+      </section>
+
+      <section class="panel">
+        <h2 style="font-size:1rem; margin-bottom:4px;">Logins</h2>
+        <!-- Seletor só aparece pra super admin (preenchido junto com o
+             <select> do formulário "Adicionar novo login", em
+             _carregarListaEmpresasSuperAdmin) — admin comum só vê os
+             logins da própria empresa mesmo, sem opção de trocar. -->
+        <div id="adminUsuariosEmpresaFiltroWrap" style="display:none; margin-bottom:14px;">
+          <label for="adminUsuariosEmpresaFiltro" style="display:block; font-size:0.82rem; color:var(--text-mute); margin-bottom:6px;">Empresa</label>
+          <select id="adminUsuariosEmpresaFiltro" onchange="_carregarListaUsuariosAdmin(this.value)"
+                  style="padding:8px 10px; border:1px solid var(--border); border-radius:8px; font-size:0.9rem; background:#fff; min-width:220px;"></select>
+        </div>
+        <div id="adminListaUsuarios"><div class="empty-state">Carregando...</div></div>
+      </section>
+    </div>
+  </section><!-- /view-admin -->
+
+  <section class="app-view container" id="view-erros">
+    <header class="app-header" style="display:flex; align-items:flex-start; justify-content:space-between; gap:12px;">
+      <div>
+        <h1>Notas com Erro</h1>
+        <p>PDFs de NF-e que não puderam ser processados automaticamente — revise e corrija por aqui.</p>
+      </div>
+    </header>
+
+    <section class="panel" style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;">
+      <div>
+        <div style="font-size:1.3rem; font-weight:700; color:var(--primary-dark);" id="errosCount">—</div>
+        <div style="color:var(--text-mute); font-size:0.82rem;">nota(s) pendente(s)</div>
+      </div>
+    </section>
+
+    <div id="errosStatus"></div>
+    <div class="empty-state" id="errosEmptyState" style="display:none;">Nenhuma nota com erro no momento.</div>
+    <div id="errosCardList" style="display:flex; flex-direction:column; gap:12px;"></div>
+  </section><!-- /view-erros -->
+
+  </div><!-- /app-content -->
+</div>
+
+<!-- IMPORTANTE: sempre que script.js OU styles.css mudar de conteúdo,
+     aumente o número depois de "?v=" aqui e no <link> do CSS (linha 13)
+     — sem isso, um cache no meio do caminho (do provedor de internet,
+     por exemplo) pode continuar servindo a versão antiga da URL antiga
+     por tempo indeterminado, mesmo com o arquivo já certo no servidor. -->
+<script src="script.js?v=28"></script>
+<script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/v31edd6df95cf4e85bb4c19e7a9bdbcba1788362987495" integrity="sha512-iIg7k2xntmwu6/uSb5tpc/hySgZc4eoL31yB29W6tJFo2akwjPWcEqnCEdJvGexCL0KEQwVYv5BlowfhVz26hg==" data-cf-beacon='{"version":"2024.11.0","token":"0c787d21037947a9bede8462ab7320fb","r":1,"spa":2}' crossorigin="anonymous"></script>
+</body>
+</html>

@@ -1,0 +1,156 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Funções auxiliares (RBAC — Administração) ──
+    // Sou admin da empresa informada? Consulta o MEU PRÓPRIO documento
+    // em "usuarios" (nunca o de outra pessoa) pra confirmar papel e
+    // empresa — não expõe nenhum dado de terceiros no processo.
+    function souAdminDaEmpresa(empresaId) {
+      return request.auth != null &&
+        get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data.papel == 'admin' &&
+        get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data.empresaId == empresaId;
+    }
+
+    // Sou o super administrador (gerencia TODAS as empresas, não só a
+    // própria)? Também consulta só o meu próprio documento.
+    function souSuperAdmin() {
+      return request.auth != null &&
+        get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data.superAdmin == true;
+    }
+
+    // Qualquer pessoa (funcionário, gestor ou admin) da MESMA empresa
+    // do documento — usado em "pendentes" e "historico_envios", que
+    // precisam ser compartilhados entre todo mundo da empresa (quem
+    // envia pelo Extrator pode ser uma pessoa, quem conta no RecebeMais
+    // pode ser outra). "empresaId" nulo (documentos antigos, de antes
+    // dessa migração, ou contas sem cadastro em "usuarios") nunca bate
+    // aqui — nesses casos, só o próprio criador continua tendo acesso,
+    // do jeito que já era antes.
+    function souMesmaEmpresa(empresaId) {
+      return request.auth != null && empresaId != null &&
+        get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data.empresaId == empresaId;
+    }
+
+    match /pendentes/{docId} {
+      // Delete: o app (qualquer papel) apaga o pendente ao finalizar a
+      // contagem, então não dá pra restringir só a admin aqui; a
+      // restrição "só admin/super admin remove da nuvem" é feita na
+      // tela de Contagens e em "historico_envios".
+      allow read, delete: if request.auth != null &&
+        (request.auth.uid == resource.data.criadoPorUid || souMesmaEmpresa(resource.data.empresaId) || souSuperAdmin());
+      allow create: if request.auth != null &&
+        (request.auth.uid == request.resource.data.criadoPorUid || souMesmaEmpresa(request.resource.data.empresaId));
+      // "update" existe pro RecebeMais poder marcar/desmarcar
+      // "emConferenciaPor" — o aviso em tempo real de que essa NF já
+      // está sendo contada por ALGUÉM (deste ou de outro aparelho,
+      // dentro da mesma empresa).
+      allow update: if request.auth != null &&
+        (request.auth.uid == resource.data.criadoPorUid || souMesmaEmpresa(resource.data.empresaId) || souSuperAdmin());
+    }
+    match /notas_com_erro/{docId} {
+      allow read, delete: if request.auth != null && request.auth.uid == resource.data.criadoPorUid;
+      allow create: if request.auth != null && request.auth.uid == request.resource.data.criadoPorUid;
+    }
+
+    // Painel (histórico de envios ao RecebeMais) — mesmo padrão
+    // compartilhado por empresa que "pendentes": quem enviou pelo
+    // Extrator pode ser uma pessoa da empresa, quem finaliza no
+    // RecebeMais (grava resultado/status ali, via "update") pode ser
+    // outra. Super admin também lê de qualquer empresa (sem precisar
+    // do campo empresaId no documento) — necessário pro Dashboard
+    // consolidado dele.
+    match /historico_envios/{docId} {
+      allow read: if request.auth != null &&
+        (request.auth.uid == resource.data.criadoPorUid || souMesmaEmpresa(resource.data.empresaId) || souSuperAdmin());
+      allow create: if request.auth != null &&
+        (request.auth.uid == request.resource.data.criadoPorUid || souMesmaEmpresa(request.resource.data.empresaId));
+      // Update: admin da empresa e super admin alteram qualquer campo
+      // (editar itens enviados). Os demais papéis só mexem nos campos
+      // do fluxo normal: finalizar/descartar no RecebeMais, liberação
+      // administrativa e resolução de alerta.
+      allow update: if request.auth != null &&
+        (souAdminDaEmpresa(resource.data.empresaId) || souSuperAdmin() ||
+         ((request.auth.uid == resource.data.criadoPorUid || souMesmaEmpresa(resource.data.empresaId)) &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'status', 'finalizadoEm', 'finalizadoPorUid', 'finalizadoPorEmail', 'finalizadoPorPerfil', 'resultado',
+            'descartadoEm', 'descartadoPorUid', 'descartadoPorEmail', 'descartadoPorPerfil',
+            'lancadaFiscal', 'lancadaFiscalEm', 'lancadaFiscalPorEmail',
+            'alertaResolvido', 'alertaResolvidoEm', 'alertaResolvidoPorEmail'
+          ])));
+      // Delete: só admin da empresa e super admin (registros antigos sem
+      // empresa continuam removíveis pelo próprio criador).
+      allow delete: if request.auth != null &&
+        (souAdminDaEmpresa(resource.data.empresaId) || souSuperAdmin() ||
+         (resource.data.empresaId == null && request.auth.uid == resource.data.criadoPorUid));
+    }
+
+    // Histórico de contagens do próprio app RecebeMais (17/09/2026) —
+    // resumo de TODA contagem finalizada em qualquer aparelho, pra
+    // consulta cruzada entre colegas da mesma empresa (ver
+    // _sincronizarContagemNaEmpresa / _iniciarListenerHistoricoEmpresa
+    // no RecebeMais.html). Mesmo padrão de "historico_envios", mas sem
+    // "update": é um registro histórico gravado uma vez na finalização
+    // e nunca mais alterado por outro aparelho — qualquer edição
+    // continua só local, no aparelho de origem (histUpdate nunca grava
+    // aqui, só em localStorage).
+    match /historico_app_contagens/{docId} {
+      allow read: if request.auth != null &&
+        (request.auth.uid == resource.data.criadoPorUid || souMesmaEmpresa(resource.data.empresaId) || souSuperAdmin());
+      allow create: if request.auth != null &&
+        (request.auth.uid == request.resource.data.criadoPorUid || souMesmaEmpresa(request.resource.data.empresaId));
+      allow delete: if request.auth != null &&
+        (request.auth.uid == resource.data.criadoPorUid || souMesmaEmpresa(resource.data.empresaId));
+    }
+
+    // Perfil do usuário (nome de exibição + foto) — o ID do documento é
+    // o próprio uid, então a regra é direta: cada um só lê/grava o
+    // próprio perfil, sem precisar checar nenhum campo de dentro dele.
+    match /perfis/{uid} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
+
+    // Eventos (Etapa 1 — auditoria/monitoramento). Log append-only:
+    // cada evento é criado uma vez e nunca mais alterado, então não há
+    // "update" aqui — só "create" (para gravar) e "read" (para montar a
+    // linha do tempo em Detalhes, o Dashboard/IA e o custo por empresa
+    // em Administração). Admin lê eventos de colegas da mesma empresa;
+    // super admin lê de qualquer empresa.
+    match /eventos/{docId} {
+      allow read: if request.auth != null &&
+        (request.auth.uid == resource.data.criadoPorUid ||
+         souMesmaEmpresa(resource.data.empresaId) ||
+         souSuperAdmin());
+      allow create: if request.auth != null && request.auth.uid == request.resource.data.criadoPorUid;
+    }
+
+    // ── ADMINISTRAÇÃO (RBAC — Etapa 1: Fundação) ──
+    match /empresas/{empresaId} {
+      // Dado não sensível (só o nome da empresa) — qualquer usuário
+      // autenticado pode ler, precisa saber o nome da própria empresa
+      // (e o super admin precisa listar todas, pro seletor de empresa).
+      allow read: if request.auth != null;
+      // "create" liberado pra qualquer autenticado: cobre tanto o
+      // bootstrap (primeiro acesso cria a própria empresa) quanto o
+      // super admin cadastrando mais empresas depois.
+      allow create: if request.auth != null;
+      allow update, delete: if souAdminDaEmpresa(empresaId) || souSuperAdmin();
+    }
+
+    match /usuarios/{uid} {
+      // Cada um sempre pode ler o PRÓPRIO cadastro. Um admin também lê
+      // os cadastros de quem é da mesma empresa dele; o super admin lê
+      // de qualquer empresa (necessário pra listar/gerenciar logins de
+      // todas as empresas cadastradas).
+      allow read: if request.auth != null &&
+        (request.auth.uid == uid ||
+         souAdminDaEmpresa(resource.data.empresaId) ||
+         souSuperAdmin());
+      // Criação/edição de OUTROS logins (convidar gestor/funcionário,
+      // ou o super admin escolhendo a empresa) passa pelo backend
+      // (Admin SDK, ignora estas regras). Pelo cliente, só o bootstrap
+      // do próprio usuário é permitido aqui.
+      allow create, update: if request.auth != null && request.auth.uid == uid;
+    }
+  }
+}
