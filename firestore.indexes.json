@@ -1,0 +1,1 @@
+{"indexes":[{"collectionGroup":"historico_app_contagens","queryScope":"COLLECTION","fields":[{"fieldPath":"empresaId","order":"ASCENDING"},{"fieldPath":"criadoEm","order":"DESCENDING"}]}],"fieldOverrides":[]}
