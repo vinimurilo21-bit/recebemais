@@ -18,19 +18,24 @@
 // Esquecer de bumpar essa linha foi exatamente o que fez uma correção
 // recente (login travando com internet instável) parecer que "não
 // funcionou" — na verdade nunca chegou a ser carregada.
-const CACHE_VERSION = "v9";
+const CACHE_VERSION = "v10";
 const CACHE_NAME = `recebemais-${CACHE_VERSION}`;
 
 // Arquivos do próprio app (mesma origem) — sempre cacheados.
 const APP_SHELL = [
   "./",
   "./index.html",
+  "./RecebeMais.html",
+  "./admin-client.js?v=30",
+  "./script.js?v=30",
+  "./styles.css?v=30",
 ];
 
 // Bibliotecas externas usadas pelo app (CDN). Cacheá-las também é
 // importante: sem isso, o app até abre offline, mas o Firebase (SDK)
 // não carrega na primeira vez sem internet.
 const EXTERNAL_ASSETS = [
+  "https://recebemais-online.firebaseapp.com/__/firebase/init.js",
   "https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js",
   "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js",
   "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js",

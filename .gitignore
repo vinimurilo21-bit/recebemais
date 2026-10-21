@@ -4,3 +4,8 @@
 node_modules/
 .firebase/
 *.log
+dist/
+tools/
+test-results/
+playwright-report/
+tests/*.png

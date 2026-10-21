@@ -19,15 +19,11 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://recebemais-online.firebaseapp.com/__/firebase/init.js"></script>
+<script>window.__firebaseApp = firebase.app();</script>
+<script src="admin-client.js?v=30"></script>
   <script>
-    const FIREBASE_CONFIG = {
-      apiKey: "AIzaSyBTjq1CzNj_wm6xwFLDEUbGGYNpFDxfe6A",
-      authDomain: "recebemais-340ea.firebaseapp.com",
-      projectId: "recebemais-340ea",
-      storageBucket: "recebemais-340ea.firebasestorage.app",
-      messagingSenderId: "154000900066",
-      appId: "1:154000900066:web:677ed6caeeb633cc1783bb"
-    };
+    const FIREBASE_CONFIG = firebase.app().options;
     try{
       firebase.initializeApp(FIREBASE_CONFIG);
 

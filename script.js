@@ -184,7 +184,7 @@ function renderFileInfoBar(){
 // evita depender desse domínio. (Valor fixo, não referencia
 // IA_BACKEND_BASE_URL porque essa constante só é declarada mais
 // adiante no arquivo — evita um erro de "usado antes de declarado".)
-const NFE_PROXY_URL = "https://recebemais.online/ia/api/nfe/consultar";
+const NFE_PROXY_URL = "https://recebemais-online.firebaseapp.com/spark/api/nfe/consultar";
 
 function setChaveAcessoStatus(text, kind){
   const el = document.getElementById("chaveAcessoStatus");
@@ -240,7 +240,7 @@ function setupChaveAcesso(){
       const timeoutId = setTimeout(() => controle.abort(), 55000);
       let resp;
       try{
-        resp = await fetch(NFE_PROXY_URL, {
+        resp = await recebeMaisRequest(NFE_PROXY_URL, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(bodyRequisicao),
@@ -2227,18 +2227,11 @@ function buildCnpjCarga(notas){
 // URL base do backend seguro (Etapas 7+8, agora reaproveitado também
 // pela Administração — criar login de outra pessoa exige o Admin SDK,
 // que só existe no servidor, nunca no navegador).
-const IA_BACKEND_BASE_URL = "https://recebemais.online/ia";
+const IA_BACKEND_BASE_URL = "https://recebemais-online.firebaseapp.com/spark";
 const IA_BACKEND_URL = IA_BACKEND_BASE_URL + "/api/assistente";
 
 const RECEBEMAIS_CONFIG = {
-  firebaseConfig: {
-    apiKey: "AIzaSyBTjq1CzNj_wm6xwFLDEUbGGYNpFDxfe6A",
-    authDomain: "recebemais-340ea.firebaseapp.com",
-    projectId: "recebemais-340ea",
-    storageBucket: "recebemais-340ea.firebasestorage.app",
-    messagingSenderId: "154000900066",
-    appId: "1:154000900066:web:677ed6caeeb633cc1783bb",
-  },
+  firebaseConfig: firebase.app().options,
   colecaoPendentes: "pendentes",
   // Log permanente de tudo que já foi enviado ao RecebeMais — diferente
   // de "pendentes" (que é consumido/apagado pelo RecebeMais assim que
@@ -3761,7 +3754,7 @@ async function perguntarAssistenteIA(){
     const idToken = await usuario.getIdToken();
     const contexto = _montarContextoParaIA();
 
-    const resp = await fetch(IA_BACKEND_URL, {
+    const resp = await recebeMaisRequest(IA_BACKEND_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json", "Authorization": "Bearer " + idToken },
       body: JSON.stringify({ pergunta, contexto }),
@@ -4451,7 +4444,7 @@ async function _verificarSaudeAoVivo(){
   if (elBackend){
     try{
       const inicio = Date.now();
-      const resp = await fetch(IA_BACKEND_BASE_URL + "/health", { method: "GET" });
+      const resp = await recebeMaisRequest(IA_BACKEND_BASE_URL + "/health", { method: "GET" });
       const ms = Date.now() - inicio;
       const ok = resp.ok;
       elBackend.innerHTML = ok
@@ -5007,7 +5000,7 @@ async function excluirHistoricoContagensEmpresa(){
   try{
     const usuario = firebase.auth().currentUser;
     const idToken = await usuario.getIdToken();
-    const resp = await fetch(IA_BACKEND_BASE_URL + "/api/admin/excluir-historico-contagens", {
+    const resp = await recebeMaisRequest(IA_BACKEND_BASE_URL + "/api/admin/excluir-historico-contagens", {
       method: "POST",
       headers: { "Content-Type": "application/json", "Authorization": "Bearer " + idToken },
     });
@@ -5564,8 +5557,8 @@ async function _carregarListaUsuariosAdmin(empresaId){
           ${souSuperAdmin ? `<td style="white-space:nowrap;">
             ${ehVoceMesmo ? '<span style="color:var(--text-mute); font-size:0.78rem;">Sua conta</span>' : `
               <button class="btn-ghost" style="padding:5px 9px; font-size:0.76rem;" onclick="alternarStatusUsuarioAdmin('${escapeHTML(doc.id)}', ${!inativo})">${inativo ? "Ativar" : "Inativar"}</button>
-              <button class="btn-ghost" style="padding:5px 9px; font-size:0.76rem;" onclick="trocarSenhaUsuarioAdmin('${escapeHTML(doc.id)}', '${escapeHTML(d.nome || d.email || "")}')">Trocar senha</button>
-              <button class="btn-ghost" style="padding:5px 9px; font-size:0.76rem; color:var(--danger);" onclick="excluirUsuarioAdmin('${escapeHTML(doc.id)}', '${escapeHTML(d.nome || d.email || "")}')">Excluir</button>
+              <button class="btn-ghost" style="padding:5px 9px; font-size:0.76rem;" onclick="trocarSenhaUsuarioAdmin('${escapeHTML(doc.id)}', '${escapeHTML(d.nome || d.email || "")}')">Redefinir senha</button>
+
             `}
           </td>` : ""}
         </tr>`;
@@ -5584,7 +5577,7 @@ async function _carregarListaUsuariosAdmin(empresaId){
 async function _chamarEndpointGestaoUsuario(caminho, metodo, corpo){
   const usuario = firebase.auth().currentUser;
   const idToken = await usuario.getIdToken();
-  const resp = await fetch(IA_BACKEND_BASE_URL + caminho, {
+  const resp = await recebeMaisRequest(IA_BACKEND_BASE_URL + caminho, {
     method: metodo,
     headers: { "Content-Type": "application/json", "Authorization": "Bearer " + idToken },
     body: corpo ? JSON.stringify(corpo) : undefined,
@@ -5608,16 +5601,12 @@ async function alternarStatusUsuarioAdmin(uid, novoAtivo){
 }
 
 async function trocarSenhaUsuarioAdmin(uid, nome){
-  const novaSenha = prompt(`Nova senha provisória para ${nome} (mínimo 6 caracteres):`);
-  if (!novaSenha) return;
-  if (novaSenha.length < 6){ showError("A senha precisa ter pelo menos 6 caracteres."); return; }
-  try{
-    await _chamarEndpointGestaoUsuario(`/api/admin/usuario/${uid}/senha`, "POST", { novaSenha });
-    showToast("Senha alterada.");
-  } catch (err){
-    console.error(err);
-    showError(err.message || "Não foi possível trocar a senha.");
-  }
+  try {
+    const doc = await firebase.firestore().collection('usuarios').doc(uid).get();
+    if (!confirm('Enviar e-mail de redefinio de senha para ' + doc.data().email + '?')) return;
+    await firebase.auth().sendPasswordResetEmail(doc.data().email);
+    showToast('E-mail de redefinio enviado. Verifique tambm o spam.');
+  } catch(err){ showError(err.message); }
 }
 
 async function excluirUsuarioAdmin(uid, nome){
@@ -5698,7 +5687,7 @@ async function criarNovoLoginAdmin(){
       const empresaSelecionada = document.getElementById("adminNovoEmpresa").value;
       if (empresaSelecionada) corpo.empresaId = empresaSelecionada;
     }
-    const resp = await fetch(IA_BACKEND_BASE_URL + "/api/admin/criar-usuario", {
+    const resp = await recebeMaisRequest(IA_BACKEND_BASE_URL + "/api/admin/criar-usuario", {
       method: "POST",
       headers: { "Content-Type": "application/json", "Authorization": "Bearer " + idToken },
       body: JSON.stringify(corpo),
